@@ -20,8 +20,9 @@ updates:
           - "*"
     ignore:
       # vite-plus pins @vitest/browser-preview, whose peer range is an exact
-      # vitest version. vitest therefore cannot be bumped on its own: npm
-      # rejects it with ERESOLVE and the PR would never go green. Bump it by
-      # hand in the same change as vite-plus, then delete this entry.
+      # vitest version (1.1.0 wants exactly 5.0.3). vitest therefore cannot be
+      # bumped on its own: npm rejects it with ERESOLVE and the PR would never
+      # go green. Bump it by hand in the same change as vite-plus, keeping this
+      # entry one patch ahead of the pinned vitest.
       - dependency-name: "vitest"
-        versions: [">=5.0.2"]
+        versions: [">=5.0.4"]
