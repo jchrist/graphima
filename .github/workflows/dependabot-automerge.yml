@@ -1,0 +1,39 @@
+# Auto-merge Dependabot PRs once the required CI checks pass.
+#
+# Dependabot groups every npm bump into a single PR (see dependabot.yml), so
+# there is nothing to review beyond "CI is green". Enabling GitHub's auto-merge
+# (`--auto --squash`) lets the merge happen the moment the five required status
+# checks go green, instead of waiting for a human to click Merge.
+#
+# `pull_request_target` runs this from main, not from the PR branch, so a
+# malicious dependency update cannot alter what runs here. The job does not
+# check out any code — it only tells GitHub to merge when CI passes.
+#
+# `--squash` because main requires linear history and disallows merge commits;
+# a grouped bump lands as one commit. Requires the repository setting
+# "Allow auto-merge" to be on, otherwise `gh pr merge --auto` fails.
+#
+# This only enables auto-merge; branch protection still blocks the merge until
+# unit (22.x), unit (24.x), package, and both e2e jobs are green.
+
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enable auto-merge (squash) on the Dependabot PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
