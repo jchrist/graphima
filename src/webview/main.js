@@ -1,0 +1,212 @@
+import { createApp } from "vue";
+import App from "./App.vue";
+
+// Hover/focus styles can't be inline, so inject one <style> element.
+// The webview CSP allows 'unsafe-inline' styles (see getWebviewHtml.js).
+const CSS = [
+  ".graphima-input{background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,transparent);border-radius:2px;padding:4px 7px;font:inherit;min-width:0}",
+  ".graphima-input:focus{outline:1px solid var(--vscode-focusBorder);outline-offset:0}",
+  ".graphima-toolbar{display:flex;align-items:center;gap:8px;position:relative;min-height:35px;padding:4px 10px;border-bottom:1px solid var(--vscode-panel-border,transparent)}",
+  ".graphima-toolbar-title{font-size:12px;font-weight:600;flex:none}",
+  ".graphima-repo-select{max-width:160px;flex:none}",
+  ".graphima-search{flex:1 1 180px;max-width:520px;font-size:12px;height:24px;box-sizing:border-box}",
+  ".graphima-toolbar-actions{display:flex;align-items:center;gap:1px;margin-left:auto;flex:none;position:relative}",
+  ".graphima-toolbar-separator{height:16px;border-left:1px solid var(--vscode-panel-border);margin:0 4px}",
+  ".graphima-icon-btn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer;font-size:15px;line-height:1;padding:4px 5px;min-width:24px;min-height:24px;border-radius:4px;color:var(--vscode-icon-foreground,var(--vscode-foreground,#cccccc))}",
+  ".graphima-icon-btn svg{display:block;width:16px;height:16px;fill:currentColor}",
+  ".graphima-icon-btn:disabled{opacity:.4;cursor:default}",
+  ".graphima-icon-btn:hover:not(:disabled){background:var(--vscode-toolbar-hoverBackground)}",
+  ".graphima-icon-btn:focus-visible,.graphima-ref:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px}",
+  // Busy state. A fixed-width status slot in the toolbar (idle: how many
+  // commits are loaded, busy: spinner + the action's name) and an
+  // indeterminate bar along the toolbar's bottom edge. Both keep a fixed
+  // footprint on purpose: in normal flow they pushed the toolbar buttons and
+  // every row below a few pixels sideways, which read as a glitch each time
+  // an action started.
+  ".graphima-status-slot{flex:none;width:108px;display:flex;align-items:center;justify-content:flex-end;gap:6px;overflow:hidden;white-space:nowrap}",
+  ".graphima-status-idle{font-size:11px;color:var(--vscode-descriptionForeground);overflow:hidden;text-overflow:ellipsis}",
+  ".graphima-busy-label{font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+  ".graphima-spinner{width:14px;height:14px;flex:none;animation:graphima-spin .9s linear infinite}",
+  ".graphima-spinner-track{fill:none;stroke:var(--vscode-progressBar-background,#0078d4);stroke-width:2;opacity:.28}",
+  ".graphima-spinner-arc{fill:none;stroke:var(--vscode-progressBar-background,#0078d4);stroke-width:2;stroke-linecap:round;stroke-dasharray:14 25;animation:graphima-spin-arc 1.5s ease-in-out infinite}",
+  ".graphima-progress{position:absolute;left:0;right:0;bottom:-1px;height:2px;z-index:2;overflow:hidden;pointer-events:none}",
+  ".graphima-progress-bar{position:absolute;top:0;bottom:0;left:0;right:0;background-image:linear-gradient(90deg,rgba(0,0,0,0) 0%,var(--vscode-progressBar-background,#0078d4) 45%,rgba(0,0,0,0) 100%);background-size:45% 100%;background-repeat:no-repeat;animation:graphima-progress-slide 1.3s ease-in-out infinite}",
+  ".graphima-icon-btn-busy svg{animation:graphima-spin .9s linear infinite}",
+  "@keyframes graphima-spin{to{transform:rotate(360deg)}}",
+  "@keyframes graphima-spin-arc{0%{stroke-dasharray:4 35;stroke-dashoffset:0}50%{stroke-dasharray:24 15;stroke-dashoffset:-8}100%{stroke-dasharray:4 35;stroke-dashoffset:-26}}",
+  "@keyframes graphima-progress-slide{0%{background-position:0% 0}100%{background-position:155% 0}}",
+  "@media (prefers-reduced-motion:reduce){.graphima-spinner,.graphima-spinner-arc,.graphima-progress-bar,.graphima-icon-btn-busy svg{animation-duration:2.4s}}",
+  ".graphima-selection-hint{padding:3px 10px;font-size:11px;color:var(--vscode-descriptionForeground)}",
+  ".graphima-worktree-bar{display:flex;align-items:center;gap:4px;min-height:28px;box-sizing:border-box;padding:2px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--vscode-panel-border);white-space:nowrap;overflow:hidden}",
+  ".graphima-worktree-mark{color:var(--vscode-scmGraph-historyItemRefColor,#3794FF);font-size:10px;margin-right:2px}",
+  ".graphima-worktree-count{color:var(--vscode-descriptionForeground);overflow:hidden;text-overflow:ellipsis}",
+  ".graphima-worktree-actions{display:inline-flex;align-items:center;gap:2px;margin-left:auto;flex:none}",
+  ".graphima-worktree-actions .graphima-icon-btn{font-size:11px;min-height:20px;padding:2px 5px}",
+  ".graphima-stash-row{display:flex;align-items:center;gap:4px;min-height:28px;box-sizing:border-box;padding:2px 10px;font-size:12px;border-bottom:1px solid var(--vscode-panel-border);white-space:nowrap;overflow:hidden}",
+  ".graphima-history-scroll{flex:1;min-width:0;overflow:auto;padding-bottom:12px;container-type:inline-size}",
+  ".graphima-history-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--vscode-font-size,13px)}",
+  ".graphima-history-table thead{position:sticky;top:0;z-index:1;background:var(--vscode-editor-background)}",
+  ".graphima-history-table th{height:25px;padding:0 6px;text-align:left;white-space:nowrap;font-size:11px;font-weight:600;color:var(--vscode-descriptionForeground);border-bottom:1px solid var(--vscode-panel-border)}",
+  ".graphima-history-table .graphima-graph-heading{padding-left:8px}",
+  ".graphima-row{--graphima-row-background:var(--vscode-editor-background);background:var(--graphima-row-background);cursor:pointer;height:22px;position:relative}",
+  ".graphima-row:hover{--graphima-row-background:var(--vscode-list-hoverBackground)}",
+  ".graphima-row-checked{--graphima-row-background:var(--vscode-list-inactiveSelectionBackground)}",
+  ".graphima-row-active{--graphima-row-background:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground,var(--vscode-editor-foreground))}",
+  // Selection is a bar as well as a background: a background alone is lost
+  // against the lineage dimming, and the ticked rows need to read as
+  // "picked, not current". The bar lives on the first cell, never on the
+  // row: a ::before with content on a <tr> becomes an anonymous table cell
+  // in Chrome and shifts that row's cells one column to the right.
+  ".graphima-row-active>td:first-child,.graphima-row-checked>td:first-child{position:relative}",
+  ".graphima-row-active>td:first-child::before,.graphima-row-checked>td:first-child::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px}",
+  ".graphima-row-active>td:first-child::before{background:var(--vscode-focusBorder,#007FD4)}",
+  ".graphima-row-checked>td:first-child::before{background:var(--vscode-focusBorder,#007FD4);opacity:.5}",
+  ".graphima-row:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px}",
+  ".graphima-row td{height:22px;box-sizing:border-box;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+  ".graphima-row .graphima-graph-cell{padding:0 0 0 8px;overflow:visible}",
+  ".graphima-subject-content{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}",
+  ".graphima-subject{display:block;flex:1 1 auto;min-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+  ".graphima-refs{display:inline-flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0;max-width:min(60%,360px);overflow:hidden;white-space:nowrap}",
+  ".graphima-meta-cell{color:var(--vscode-descriptionForeground)}",
+  ".graphima-row-active .graphima-meta-cell{color:inherit;opacity:.8}",
+  "@container (max-width:680px){.graphima-meta-date{display:none}}",
+  "@container (max-width:480px){.graphima-meta-author{display:none}}",
+  ".graphima-menu-item{padding:6px 12px;cursor:pointer;line-height:1.4;white-space:nowrap}",
+  ".graphima-menu-item:hover{background:var(--vscode-menu-selectionBackground);color:var(--vscode-menu-selectionForeground)}",
+  ".graphima-menu-sep{border:none;border-top:1px solid var(--vscode-menu-separatorBackground,var(--vscode-panel-border,rgba(128,128,128,.35)));margin:5px 0}",
+  ".graphima-menu{position:fixed;z-index:100;min-width:230px;max-height:min(600px,calc(100vh - 16px));overflow-y:auto;background:var(--vscode-menu-background);color:var(--vscode-menu-foreground,var(--vscode-foreground));border:1px solid var(--vscode-menu-border,var(--vscode-panel-border));box-shadow:0 4px 12px rgba(0,0,0,.4);border-radius:6px;padding:6px 0;font-size:var(--vscode-font-size,13px)}",
+  ".graphima-menu-header{padding:6px 12px;opacity:.7;font-family:monospace;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px}",
+  // Header of a menu opened on a ref chip: the chip it belongs to, plus the
+  // remote half when the chip stands for two refs.
+  ".graphima-menu-chipheader{display:flex;align-items:center;gap:4px;padding-bottom:0}",
+  ".graphima-menu-section{padding-top:2px;padding-bottom:2px}",
+  ".graphima-menu-chipicon{flex:none}",
+  ".graphima-menu-chipremote{opacity:.7}",
+  ".graphima-menu-worktree{padding:0 12px 6px;opacity:.7;font-size:11px;font-family:monospace;overflow:hidden;text-overflow:ellipsis}",
+  // A nested list: the parent item that opens it, and the list itself.
+  ".graphima-menu-submenu{z-index:101;min-width:200px}",
+  ".graphima-menu-sub{display:flex;align-items:center;justify-content:space-between;gap:12px}",
+  ".graphima-menu-arrow{opacity:.6}",
+  ".graphima-link:hover{text-decoration:underline}",
+  ".graphima-ref{display:inline-flex;align-items:center;gap:4px;flex:none;max-width:170px;height:18px;box-sizing:border-box;padding:0 6px;border-radius:10px;font-size:12px;font-weight:500;line-height:18px;cursor:pointer;white-space:nowrap;vertical-align:middle}",
+  ".graphima-ref-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+  ".graphima-ref-local{background:var(--vscode-scmGraph-historyItemRefColor,#3794FF);color:var(--vscode-scmGraph-historyItemHoverLabelForeground,#000)}",
+  ".graphima-ref-head{box-shadow:inset 0 0 0 1px var(--vscode-editor-background)}",
+  ".graphima-ref-remote{background:var(--vscode-scmGraph-historyItemRemoteRefColor,#B180D7);color:var(--vscode-scmGraph-historyItemHoverLabelForeground,#000)}",
+  ".graphima-ref-tag{background:var(--vscode-scmGraph-historyItemRefColor,#3794FF);color:var(--vscode-scmGraph-historyItemHoverLabelForeground,#000)}",
+  ".graphima-ref-worktree{outline:1px dashed var(--vscode-focusBorder,#007FD4);outline-offset:1px}",
+  ".graphima-ref:hover{filter:brightness(1.2)}",
+  ".graphima-ref svg{width:12px;height:12px;flex:none}",
+  ".graphima-th{position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+  ".graphima-resizer{position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize}",
+  ".graphima-resizer:hover{background:var(--vscode-focusBorder,#007FD4)}",
+  ".graphima-panel-resizer{width:6px;cursor:col-resize;flex:none;border-left:1px solid var(--vscode-panel-border)}",
+  ".graphima-panel-resizer:hover{background:var(--vscode-focusBorder,#007FD4)}",
+  ".graphima-pane-header{display:flex;align-items:center;gap:4px;flex:none;min-height:28px;box-sizing:border-box;padding:4px 8px 4px 4px;font-size:12px;cursor:pointer;user-select:none;color:var(--vscode-foreground)}",
+  ".graphima-pane-header:hover{background:var(--vscode-list-hoverBackground)}",
+  ".graphima-pane-header:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px}",
+  ".graphima-split-resizer{height:6px;cursor:row-resize;flex:none;border-top:1px solid var(--vscode-panel-border);box-sizing:border-box}",
+  ".graphima-split-resizer:hover{background:var(--vscode-focusBorder,#007FD4)}",
+  ".graphima-file-label{display:inline-block;max-width:100%;vertical-align:bottom;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+  ".graphima-tree-icon{width:14px;height:14px;flex:none}",
+  ".graphima-filerow{display:flex;align-items:center;gap:6px;min-width:0}",
+  ".graphima-filerow .graphima-rowactions{visibility:hidden;flex:none;display:inline-flex;gap:2px;align-items:center}",
+  ".graphima-filerow:hover .graphima-rowactions,.graphima-filerow-selected .graphima-rowactions{visibility:visible}",
+  ".graphima-status{flex:none;width:16px;text-align:right;font-weight:700}",
+  "#root button:not(.graphima-icon-btn):not(.graphima-seg){background:var(--vscode-button-secondaryBackground,#3a3d41);color:var(--vscode-button-secondaryForeground,#ffffff);border:1px solid var(--vscode-contrastBorder,transparent);padding:3px 12px;border-radius:2px;cursor:pointer;font-size:12px}",
+  "#root button:not(.graphima-icon-btn):not(.graphima-seg):hover:not(:disabled){background:var(--vscode-button-secondaryHoverBackground,#45494e)}",
+  "#root button:not(.graphima-icon-btn):not(.graphima-seg):disabled{opacity:.5;cursor:default}",
+  ".graphima-seg{border:none;cursor:pointer;padding:1px 8px;font-size:11px;background:transparent;color:var(--vscode-foreground,#cccccc)}",
+  ".graphima-seg-active{background:var(--vscode-list-activeSelectionBackground,#094771);color:var(--vscode-list-activeSelectionForeground,#ffffff)}",
+  ".graphima-hover-card{position:fixed;z-index:90;min-width:340px;max-width:520px;max-height:640px;overflow:auto;box-sizing:border-box;background:var(--vscode-editorHoverWidget-background,var(--vscode-menu-background));border:1px solid var(--vscode-editorHoverWidget-border,var(--vscode-panel-border));box-shadow:0 4px 12px rgba(0,0,0,.4);border-radius:3px;padding:8px 10px;font-size:12px;line-height:1.5;color:var(--vscode-editorHoverWidget-foreground,var(--vscode-foreground))}",
+  // The popup must never clip a ref name: in a 22px graph row a badge
+  // ellipsizes, but here a chip may take the full card width and wrap.
+  ".graphima-hover-card .graphima-ref{max-width:100%}",
+  ".graphima-hover-card .graphima-ref-label{white-space:normal;word-break:break-all;overflow:visible;text-overflow:clip}",
+  ".graphima-hover-stats{display:flex;align-items:center;gap:8px;margin:2px 0 4px;opacity:.9}",
+  ".graphima-hover-add{color:var(--vscode-gitDecoration-addedResourceForeground)}",
+  ".graphima-hover-del{color:var(--vscode-gitDecoration-deletedResourceForeground)}",
+  ".graphima-hover-author{margin-bottom:4px;word-break:break-word;white-space:normal}",
+  ".graphima-hover-author-name{font-weight:600}",
+  ".graphima-hover-author-email{opacity:.7}",
+  ".graphima-hover-date{opacity:.7}",
+  ".graphima-hover-subject{font-weight:600;margin:2px 0 4px;word-break:break-word;white-space:normal}",
+  ".graphima-hover-body{white-space:pre-wrap;word-break:break-word;opacity:.9;margin-bottom:4px}",
+  ".graphima-hover-refs{opacity:.85;word-break:break-word;white-space:normal}",
+  ".graphima-hover-label{opacity:.6}",
+  ".graphima-hover-chips{display:flex;flex-wrap:wrap;gap:4px;margin:3px 0}",
+  ".graphima-hover-div{border:none;border-top:1px solid var(--vscode-panel-border);margin:6px 0}",
+  ".graphima-hover-hashrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}",
+  ".graphima-hover-hash{font-family:monospace}",
+  ".graphima-hover-copy{font-size:11px;min-height:20px;padding:2px 6px}",
+  ".graphima-hover-parents{opacity:.7;font-size:11px}",
+  ".graphima-find-btn-active{background:var(--vscode-list-activeSelectionBackground,#094771);color:var(--vscode-list-activeSelectionForeground,#fff)}",
+  ".graphima-find-count{font-size:11px;opacity:.75;white-space:nowrap;min-width:64px}",
+  ".graphima-row-match td{background:var(--vscode-editor-findMatchHighlightBackground,rgba(234,92,0,.28))}",
+  ".graphima-row-match-current td{background:var(--vscode-editor-findMatchBackground,rgba(234,92,0,.55))}",
+  ".graphima-tag-kind{opacity:.65;margin-left:4px;font-weight:400}",
+  ".graphima-tag-annotation{display:flex;gap:4px;flex-wrap:wrap;padding:2px 12px 4px;font-size:11px;opacity:.85;white-space:normal}",
+  ".graphima-tag-message{padding:2px 12px 6px;font-size:11px;opacity:.9;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow:hidden;border-top:1px solid var(--vscode-panel-border)}",
+  ".graphima-remotes-dialog{position:fixed;z-index:101;width:380px;max-width:calc(100vw - 40px);max-height:70vh;overflow:auto;background:var(--vscode-menu-background);border:1px solid var(--vscode-menu-border,var(--vscode-panel-border));box-shadow:0 4px 12px rgba(0,0,0,.4);padding:10px;font-size:12px}",
+  ".graphima-remote-row{padding:6px 0;border-top:1px solid var(--vscode-panel-border)}",
+  ".graphima-remote-row:first-of-type{border-top:none;padding-top:0}",
+  ".graphima-remote-name{font-weight:600;font-family:monospace}",
+  ".graphima-remote-url{opacity:.75;word-break:break-all;margin:2px 0 4px}",
+  ".graphima-remote-actions{display:flex;gap:6px;flex-wrap:wrap}",
+  ".graphima-settings{flex:1;min-height:0;overflow:auto;padding:12px 16px 32px}",
+  ".graphima-settings-inner{max-width:760px}",
+  ".graphima-settings-header{display:flex;align-items:baseline;gap:8px;margin-bottom:12px}",
+  ".graphima-settings-title{font-size:15px;font-weight:600}",
+  ".graphima-settings-subtitle{opacity:.6;font-size:11px}",
+  ".graphima-settings-section{margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--vscode-panel-border)}",
+  ".graphima-settings-section-title{font-size:13px;font-weight:600;margin-bottom:6px}",
+  ".graphima-settings-row{display:flex;gap:8px;align-items:flex-start;margin:6px 0;cursor:pointer}",
+  ".graphima-settings-label{font-weight:600;display:block}",
+  ".graphima-settings-desc{opacity:.7;font-size:11px;display:block}",
+  ".graphima-settings-remote{padding:6px 0;border-top:1px solid var(--vscode-panel-border)}",
+  ".graphima-settings-remote:first-of-type{border-top:none;padding-top:0}",
+  ".graphima-settings-remote-name{font-weight:600;font-family:monospace}",
+  ".graphima-settings-remote-url{opacity:.75;word-break:break-all;margin:2px 0 4px}",
+  ".graphima-settings-remote-actions{display:flex;gap:6px;flex-wrap:wrap}",
+  ".graphima-row-worktree{font-style:italic}",
+  ".graphima-order-select{width:auto;min-width:104px;font-size:11px;padding:2px 4px}",
+  ".graphima-colmenu-panel{position:absolute;top:100%;left:0;margin-top:2px;min-width:140px;z-index:100}",
+  ".graphima-branchfilter{position:relative;display:inline-flex}",
+  ".graphima-branchfilter-btn-active{background:var(--vscode-list-activeSelectionBackground,#094771);color:var(--vscode-list-activeSelectionForeground,#fff)}",
+  ".graphima-branchfilter-panel{position:absolute;top:100%;left:0;margin-top:2px;min-width:220px;max-width:340px;z-index:100}",
+  ".graphima-branchfilter-list{max-height:220px;overflow:auto}",
+  ".graphima-branchfilter-item{display:flex;align-items:center;gap:6px}",
+  ".graphima-branchfilter-box{width:12px;flex:none;text-align:center;opacity:.9}",
+  ".graphima-branchfilter-glob{width:calc(100% - 16px);margin:4px 8px 2px;box-sizing:border-box}",
+  ".graphima-branchfilter-hint{padding:4px 12px;font-size:11px;opacity:.7}",
+  ".graphima-avatar{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;overflow:hidden;flex:none;vertical-align:-3px;margin-right:4px;background:var(--vscode-textLink-foreground,#4daafc);color:var(--vscode-badge-foreground,#fff)}",
+  ".graphima-avatar-lg{width:18px;height:18px;vertical-align:-3px}",
+  ".graphima-avatar-img{width:100%;height:100%;object-fit:cover;display:block}",
+  ".graphima-avatar-initials{font-size:9px;font-weight:700;line-height:1;letter-spacing:-.2px}",
+  ".graphima-avatar-lg .graphima-avatar-initials{font-size:10px}",
+  ".graphima-author-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+  ".graphima-hover-author{display:flex;align-items:center;gap:2px;flex-wrap:wrap}",
+  ".graphima-rt-link{color:var(--vscode-textLink-foreground,#4daafc);text-decoration:none;cursor:pointer}",
+  ".graphima-rt-link:hover{color:var(--vscode-textLink-activeForeground,#4daafc);text-decoration:underline}",
+  ".graphima-rt-code{font-family:var(--vscode-editor-font-family,monospace);background:var(--vscode-textCodeBlock-background,rgba(255,255,255,.08));border-radius:3px;padding:0 3px}",
+  ".graphima-rt-emoji{font-family:appleColorEmoji,SegoeUIEmoji,NotoColorEmoji,sans-serif}",
+  "@media(max-width:680px){.graphima-toolbar{flex-wrap:wrap}.graphima-search{order:3;max-width:none;flex-basis:100%}.graphima-toolbar-actions{margin-left:auto}}",
+].join("\n");
+
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  const styleEl = document.createElement("style");
+  styleEl.textContent = CSS;
+  document.head.appendChild(styleEl);
+  const initialStateEl = document.getElementById("graphima-initial-state");
+  let initialLocation = "panel";
+  try {
+    const parsed = initialStateEl ? JSON.parse(initialStateEl.textContent || "{}") : {};
+    if (parsed.location === "editor" || parsed.location === "panel") {
+      initialLocation = parsed.location;
+    }
+  } catch {
+    // Keep default; the UI does not depend on it beyond a label.
+  }
+  createApp(App, { location: initialLocation }).mount("#root");
+}
