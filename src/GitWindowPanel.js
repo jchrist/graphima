@@ -4,16 +4,8 @@
 // fake and any runner can load this module.
 const { getWebviewHtml } = require("./getWebviewHtml");
 
-// The editor tab shows the exact same file as the Extensions page
-// (package.json "icon"): the mark — two lanes under one bowed lane
-// with a commit node disc on each lane. The bottom-left status bar item shows
-// the same mark as a single-color codicon (`$(graphima-mark)`, drawn from
-// resources/graphima.ttf) — StatusBarItem.text only supports codicons, so a
-// custom image is not possible there.
-//
-// WebviewPanel has no icon arg, the tab icon comes from panel.iconPath.
-// The mark is full-color on a transparent tile, so one file serves light,
-// dark and high-contrast tabs with no theme swap.
+// Share the full-color icon with the Extensions page; the status bar needs
+// the same silhouette in resources/graphima.ttf because it only accepts codicons.
 const ICON = "icon.png";
 
 class GitWindowPanel {

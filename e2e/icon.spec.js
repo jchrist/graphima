@@ -125,5 +125,24 @@ test.describe("graphima icon", () => {
     });
     expect(painted.length).toBeGreaterThan(0);
     expect(painted.join(" ")).toContain("icon.png");
+
+    const pixels = await page.evaluate(async (background) => {
+      const image = new Image();
+      image.src = background.match(/url\(["']?(.*?)["']?\)/)[1];
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0);
+      return [[34, 72], [64, 27], [94, 72]].map(([x, y]) =>
+        [...context.getImageData(x, y, 1, 1).data],
+      );
+    }, painted.find((background) => background.includes("icon.png")));
+    expect(pixels[0][3]).toBeGreaterThan(240);
+    expect(pixels[0][2]).toBeGreaterThan(pixels[0][0]);
+    expect(pixels[1][3]).toBeGreaterThan(240);
+    expect(pixels[1][0]).toBeGreaterThan(pixels[1][2]);
+    expect(pixels[2][3]).toBe(0);
   });
 });
