@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release version and source
+        id: version
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor HEAD origin/main
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { name, publisher, version } = require('./package.json');
+          if (name !== 'graphima' || publisher !== 'jchrist') {
+            throw new Error('Expected the extension jchrist.graphima');
+          }
+          if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
+            throw new Error('A release requires a stable major.minor.patch version');
+          }
+          if (process.env.RELEASE_EVENT === 'workflow_dispatch') {
+            if (process.env.RELEASE_REF !== 'refs/heads/main') {
+              throw new Error('Run the release workflow from main');
+            }
+          } else if (process.env.RELEASE_TAG !== `v${version}`) {
+            throw new Error(`The release tag must be v${version}`);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
+          NODE
+
+  ci:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: [validate, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download the CI package
+        uses: actions/download-artifact@v8
+        with:
+          name: graphima-vsix
+          path: release-artifact
+
+      - name: Create the GitHub release
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_path="release-artifact/graphima-${RELEASE_VERSION}.vsix"
+          test -f "$package_path"
+          cat > release-notes.md <<'NOTES'
+          Download the attached VSIX to install Graphima in VS Code or upload it to the Visual Studio Marketplace.
+          NOTES
+          release_url=$(gh release create "v${RELEASE_VERSION}" "$package_path" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Graphima ${RELEASE_VERSION}" \
+            --notes-file release-notes.md)
+          {
+            echo "Graphima ${RELEASE_VERSION} passed all CI checks."
+            echo
+            echo "[Download the VSIX from the release](${release_url})."
+            echo
+            echo "Upload the VSIX through [Marketplace publisher management](https://marketplace.visualstudio.com/manage)."
+          } >> "$GITHUB_STEP_SUMMARY"
