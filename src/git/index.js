@@ -1,3 +1,5 @@
+const fs = require("node:fs/promises");
+const path = require("node:path");
 const { findRepoRoot } = require("./cliGit");
 const { HybridGitService } = require("./vscodeGit");
 
@@ -14,6 +16,41 @@ async function createGitService(vscode, output) {
   return store.getService();
 }
 
+async function findWorkspaceRepositories(startDir) {
+  const root = await findRepoRoot(startDir);
+  if (root) {
+    return [{ folder: startDir, root }];
+  }
+  const repos = [];
+  const pending = [startDir];
+  for (let i = 0; i < pending.length; i++) {
+    const folder = pending[i];
+    let entries;
+    try {
+      entries = await fs.readdir(folder, { withFileTypes: true });
+    } catch (err) {
+      if (["EACCES", "EPERM", "ENOENT", "ENOTDIR"].includes(err.code)) {
+        continue;
+      }
+      throw err;
+    }
+    if (entries.some((entry) => entry.name === ".git")) {
+      const repoRoot = await findRepoRoot(folder);
+      if (repoRoot) {
+        repos.push({ folder, root: repoRoot });
+        // Stop at repository boundaries to avoid crawling source and build trees.
+        continue;
+      }
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.isDirectory() && entry.name !== ".git" && entry.name !== "node_modules") {
+        pending.push(path.join(folder, entry.name));
+      }
+    }
+  }
+  return repos;
+}
+
 // Multi-root store: one service per repository, one active at a time.
 // The webview lists `roots`, switches with `useRoot`, and talks to the
 // active service for everything else.
@@ -21,11 +58,17 @@ async function createRootStore(vscode, output) {
   const roots = [];
   const services = new Map();
   for (const startDir of getWorkspaceRoots(vscode)) {
-    const name = startDir.split("/").pop() || startDir;
-    const repoRoot = await findRepoRoot(startDir);
-    roots.push({ name, folder: startDir, root: repoRoot || null });
-    if (repoRoot && !services.has(repoRoot)) {
-      services.set(repoRoot, new HybridGitService(vscode, repoRoot));
+    const repos = await findWorkspaceRepositories(startDir);
+    if (repos.length === 0) {
+      roots.push({ name: path.basename(startDir) || startDir, folder: startDir, root: null });
+    }
+    for (const { folder, root } of repos) {
+      if (services.has(root)) {
+        continue;
+      }
+      const name = path.relative(startDir, folder) || path.basename(startDir) || startDir;
+      roots.push({ name, folder, root });
+      services.set(root, new HybridGitService(vscode, root));
     }
   }
   let activeRoot = (roots.find((r) => r.root) || {}).root;
