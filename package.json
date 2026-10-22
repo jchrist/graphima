@@ -1,7 +1,7 @@
 {
   "name": "graphima",
   "displayName": "Graphima",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Git history graph: commit lanes, branches and tags, file diff, squash, reword, drop, rebase.",
   "categories": [
     "Other",
